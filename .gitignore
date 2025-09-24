@@ -1,0 +1,5 @@
+/target
+/src/dictionaries
+kaoruko_derive/target
+.env
+*.json
