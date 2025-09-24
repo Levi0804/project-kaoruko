@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use std::{collections::HashMap, pin::Pin, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
-use crate::{bot::NAME, command::CommandParserTrait};
+use crate::command::CommandParserTrait;
 
 pub mod bot;
 pub mod command;
@@ -113,7 +113,7 @@ fn on_connect(
                     "userToken": token,
                     "picture": "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",
                     "language": "en-US",
-                    "nickname": NAME,
+                    "nickname": "kaoruko ✨",
                 }),
                 Duration::from_secs(TIMEOUT),
                 move |payload: Payload, socket: Client| {
@@ -246,8 +246,9 @@ fn on_set_player_word(
             .get(&room_code)
             .ok_or(anyhow!("cannot get bot handle"))
             .unwrap();
+        let bot2 = Arc::clone(&bot);
         let word = serde_json::from_value::<String>(payload[1].clone()).unwrap();
-        bot.set_player_word(word).await;
+        bot2.set_player_word(word).await;
     }
     .boxed()
 }

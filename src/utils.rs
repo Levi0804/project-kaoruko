@@ -5,8 +5,6 @@ use rust_socketio::Payload;
 use serde_json::{json, Value};
 use std::{cell::RefCell, sync::Arc};
 
-use crate::NAME;
-
 pub fn create_user_token() -> anyhow::Result<String> {
     let mut rng = rand::rng();
     let token = (0..16)
@@ -26,7 +24,7 @@ pub async fn start_new_room(
         .post(env!("START_ROOM"))
         .header(CONTENT_TYPE, "application/json")
         .json(&json!({
-            "name": room_name.unwrap_or(NAME),
+            "name": room_name.unwrap_or("kaoruko ✨"),
             "isPublic": is_public,
             "gameId": "bombparty",
             "creatorUserToken": bot_token,

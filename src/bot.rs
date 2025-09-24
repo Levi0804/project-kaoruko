@@ -4,19 +4,22 @@ use tokio::sync::{mpsc, oneshot};
 use crate::utils::{create_user_token, shuffle};
 use crate::Dictionary;
 
-pub const NAME: &str = "kaoruko ✨";
-
 struct Bot {
+    // for receiving values from the associated sender
     receiver: mpsc::Receiver<BotMessage>,
+    // english dictionary
     dictionary: Dictionary,
-    // unique id of the bot inside room
+    // unique id of bot inside room
     self_peer_id: AtomicU64,
     // the user who created the room
     room_creator: String,
     // unique bot token for each room
     token: String,
+    // a list of words used in the game
     used_words: Vec<String>,
+    // dynamically changing words as per typing
     player_word: String,
+    // current active syllable in game
     syllable: String,
 }
 
@@ -152,8 +155,9 @@ impl Bot {
             }
             BotMessage::RemoveWord { word } => {
                 let mut dict = self.dictionary.dictionary.borrow_mut();
-                let index = dict.iter().position(|w| w == &word).unwrap();
-                dict.remove(index);
+                if let Some(index) = dict.iter().position(|w| w == &word) {
+                    dict.remove(index);
+                }
             }
         }
     }
@@ -169,6 +173,16 @@ async fn run_my_bot(mut bot: Bot) {
 #[derive(Clone)]
 pub struct BotHandle {
     sender: mpsc::Sender<BotMessage>,
+}
+
+pub enum Get {
+    Words,
+    PeerId,
+    RoomCreator,
+    BotToken,
+    Word,
+    PlayerWord,
+    Syllable,
 }
 
 impl BotHandle {
