@@ -1,3 +1,4 @@
+use rust_socketio::asynchronous::Client;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot};
 
@@ -21,6 +22,8 @@ struct Bot {
     player_word: String,
     // current active syllable in game
     syllable: String,
+    // bombparty game socket
+    game_socket: Option<Client>,
 }
 
 enum BotMessage {
@@ -69,6 +72,10 @@ enum BotMessage {
     RemoveWord {
         word: String,
     },
+    SetGameSocket {
+        socket: Client,
+    },
+    StartRoundNow,
 }
 
 impl Bot {
@@ -85,6 +92,7 @@ impl Bot {
             used_words: Vec::<String>::new(),
             player_word: String::default(),
             syllable: String::default(),
+            game_socket: None,
         }
     }
     async fn handle_message(&mut self, msg: BotMessage) {
@@ -158,6 +166,17 @@ impl Bot {
                 if let Some(index) = dict.iter().position(|w| w == &word) {
                     dict.remove(index);
                 }
+            }
+            BotMessage::SetGameSocket { socket } => {
+                self.game_socket = Some(socket);
+            }
+            BotMessage::StartRoundNow => {
+                self.game_socket
+                    .as_ref()
+                    .unwrap()
+                    .emit("startRoundNow", "")
+                    .await
+                    .unwrap();
             }
         }
     }
@@ -290,6 +309,16 @@ impl BotHandle {
 
     pub async fn remove_word(&self, word: String) {
         let msg = BotMessage::RemoveWord { word };
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn set_game_socket(&self, socket: Client) {
+        let msg = BotMessage::SetGameSocket { socket };
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn start_round_now(&self) {
+        let msg = BotMessage::StartRoundNow;
         self.sender.send(msg).await.unwrap();
     }
 }

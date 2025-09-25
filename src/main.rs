@@ -151,10 +151,13 @@ fn on_connect_inner(
 
         let host = join_room(&room_code).await.unwrap();
 
-        // TODO: insert arc game socket here
-
+        let bot = ROOMS.lock().await;
+        let bot = bot
+            .get(&room_code.to_string())
+            .ok_or(anyhow!("cannot get bot handle"))
+            .unwrap();
         // bombparty socket
-        ClientBuilder::new(host)
+        let game_socket = ClientBuilder::new(host)
             .reconnect(false)
             .transport_type(TransportType::Websocket)
             .on(Event::Connect, move |_: Payload, socket: Client| {
@@ -195,6 +198,7 @@ fn on_connect_inner(
             .connect()
             .await
             .expect("unable to create game socket");
+        bot.set_game_socket(game_socket).await;
     }
     .boxed()
 }
@@ -208,8 +212,10 @@ fn on_set_milestone(
         let payload = text_payload(payload);
         let name = serde_json::from_value::<String>(payload[0]["name"].clone()).unwrap();
         if &name == "seating" {
-            let bot = Arc::new(BotHandle::new());
-            ROOMS.lock().await.insert(room_code.clone(), bot);
+            // TODO: only thing that needs to be changed is the dictionary not everything
+            // so only change that don't take the entire bot as new.
+            // let bot = Arc::new(BotHandle::new());
+            // ROOMS.lock().await.insert(room_code.clone(), bot);
             let _ = game_socket.emit("joinRound", "").await;
         }
         if let Ok(current_player_peer_id) =
@@ -404,6 +410,12 @@ fn on_chat(
                 ) {
                     Ok(cmd) => match cmd {
                         Command::Search => {
+                            if query == "" {
+                                let syllable = bot.get_syllable().await;
+                                let word = bot.get_word(syllable).await;
+                                socket.emit("chat", word).await?;
+                                return Ok(());
+                            }
                             let word = bot.get_word(query.to_string()).await;
                             socket.emit("chat", word).await?;
                         }
@@ -417,8 +429,7 @@ fn on_chat(
                             Err(err) => socket.emit("chat", err.to_string()).await?,
                         },
                         Command::StartNow => {
-                            // this should be done from the game socket.
-                            socket.emit("startRoundNow", "").await.unwrap();
+                            bot.start_round_now().await;
                         }
                     },
                     Err(err) => {
