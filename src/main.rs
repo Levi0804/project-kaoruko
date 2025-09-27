@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
             .transport_type(TransportType::Websocket)
             .on(Event::Connect, move |payload, socket| {
                 let room_code = room_code.to_string();
-                tracing::info!("Playing at you know where with code: {room_code}");
+                tracing::info!("Playing at https://jklm.fun/{room_code}");
                 on_connect(payload, socket, room_code, TOKEN.to_string())
             })
             .on("chat", move |payload, socket| {
