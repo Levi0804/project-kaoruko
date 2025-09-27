@@ -3,4 +3,3 @@
 kaoruko_derive/target
 .env
 *.json
-*.gif
