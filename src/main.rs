@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use futures_util::FutureExt;
 use rust_socketio::{
     asynchronous::{Client, ClientBuilder},
@@ -6,9 +5,8 @@ use rust_socketio::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use std::sync::LazyLock;
-use std::{collections::HashMap, pin::Pin, time::Duration};
-use tokio::sync::{Mutex, Notify};
+use std::{pin::Pin, time::Duration};
+use tokio::sync::Notify;
 
 use crate::command::CommandParserTrait;
 
@@ -26,10 +24,6 @@ use utils::*;
 
 // timeout to wait for socket to receive response (in seconds).
 const TIMEOUT: u64 = 5;
-// TODO: avoid using tokio mutex.
-type Rooms = LazyLock<Arc<Mutex<HashMap<&'static str, Arc<BotHandle>>>>>;
-// every room with it's own unique state
-static ROOMS: Rooms = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,8 +40,13 @@ async fn main() -> anyhow::Result<()> {
         let token = create_user_token().unwrap();
         let (host, room_code) = start_new_room(None, false, &token).await?;
         // just one leak, that's it.
+        // TODO: we can get rid of this.
         let room_code: &'static str = Box::leak(Box::new(room_code));
 
+        let bot = Arc::new(BotHandle::new());
+        let bot2 = Arc::clone(&bot);
+
+        // useful for halting the bot
         let notifier = Arc::new(Notify::new());
         let notifier2 = Arc::clone(&notifier);
 
@@ -55,11 +54,13 @@ async fn main() -> anyhow::Result<()> {
             .reconnect(false)
             .transport_type(TransportType::Websocket)
             .on(Event::Connect, move |payload, socket| {
+                let bot2 = Arc::clone(&bot2);
                 tracing::info!("Playing at https://jklm.fun/{room_code}");
-                on_connect(payload, socket, room_code, token.clone())
+                on_connect(payload, socket, room_code, bot2, token.clone())
             })
             .on("chat", move |payload, socket| {
-                on_chat(payload, socket, room_code, Arc::clone(&notifier))
+                let bot3 = Arc::clone(&bot);
+                on_chat(payload, socket, bot3, Arc::clone(&notifier))
             })
             .on("chatterAdded", on_chatter_added)
             .connect()
@@ -81,11 +82,10 @@ fn on_connect(
     _paylod: Payload,
     socket: Client,
     room_code: &'static str,
+    bot: Arc<BotHandle>,
     token: String,
 ) -> Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>> {
     async move {
-        let bot = Arc::new(BotHandle::new());
-        let bot2 = Arc::clone(&bot);
         socket
             .emit_with_ack(
                 "joinRoom",
@@ -104,8 +104,6 @@ fn on_connect(
             )
             .await
             .expect("server unreachable");
-
-            ROOMS.lock().await.insert(room_code, bot2);
     }
     .boxed()
 }
@@ -210,18 +208,14 @@ fn on_chatter_added(
 fn on_chat(
     payload: Payload,
     socket: Client,
-    room_code: &'static str,
+    bot: Arc<BotHandle>,
     notifier: Arc<Notify>,
-) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + '_>> {
+) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
     async move {
         tokio::spawn(async move {
             let values = text_payload(payload);
             let chatter = serde_json::from_value::<Chatter>(values[0].clone())?;
             let message = serde_json::from_value::<String>(values[1].clone())?;
-
-            let bot = ROOMS.lock().await;
-            let bot = bot.get(room_code).ok_or(anyhow!("cannot get bot handle"))?;
-
             // TODO: also move this parsing inside the function
             let bot_peer_id = bot.get_peer_id().await;
             // TODO: this parser is broken
