@@ -3,7 +3,7 @@ use rand::Rng;
 use reqwest::{header::CONTENT_TYPE, Client};
 use rust_socketio::Payload;
 use serde_json::{json, Value};
-use std::{cell::RefCell, sync::Arc};
+use std::cell::RefCell;
 
 pub fn create_user_token() -> anyhow::Result<String> {
     let mut rng = rand::rng();
@@ -19,7 +19,7 @@ pub async fn start_new_room(
     room_name: Option<&str>,
     is_public: bool,
     bot_token: &str,
-) -> anyhow::Result<(String, Arc<String>)> {
+) -> anyhow::Result<(String, String)> {
     let response = Client::new()
         .post(env!("START_ROOM"))
         .header(CONTENT_TYPE, "application/json")
@@ -33,7 +33,7 @@ pub async fn start_new_room(
         .await?;
     let url = serde_json::from_str::<serde_json::Value>(&response.text().await?)?;
     if let Value::String(code) = &url["roomCode"] {
-        Ok((join_room(code).await?, Arc::new(code.clone())))
+        Ok((join_room(code).await?, code.clone()))
     } else {
         unreachable!("enterd unreachable!?")
     }

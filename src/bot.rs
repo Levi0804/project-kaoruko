@@ -2,7 +2,7 @@ use rust_socketio::asynchronous::Client;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::utils::{create_user_token, shuffle};
+use crate::utils::shuffle;
 use crate::Dictionary;
 
 struct Bot {
@@ -14,8 +14,6 @@ struct Bot {
     self_peer_id: AtomicU64,
     // the user who created the room
     room_creator: String,
-    // unique bot token for each room
-    token: String,
     // a list of words used in the game
     used_words: Vec<String>,
     // dynamically changing words as per typing
@@ -45,9 +43,6 @@ enum BotMessage {
         creator: String,
     },
     GetRoomCreator {
-        respond_to: oneshot::Sender<String>,
-    },
-    GetBotToken {
         respond_to: oneshot::Sender<String>,
     },
     AddWord {
@@ -88,7 +83,6 @@ impl Bot {
             dictionary,
             self_peer_id: AtomicU64::default(),
             room_creator: String::default(),
-            token: create_user_token().unwrap_or("aaaaaaaaaaaaaaaa".to_string()),
             used_words: Vec::<String>::new(),
             player_word: String::default(),
             syllable: String::default(),
@@ -127,9 +121,6 @@ impl Bot {
             }
             BotMessage::GetRoomCreator { respond_to } => {
                 respond_to.send(self.room_creator.clone()).unwrap();
-            }
-            BotMessage::GetBotToken { respond_to } => {
-                respond_to.send(self.token.clone()).unwrap();
             }
             BotMessage::GetWord {
                 syllable,
@@ -194,16 +185,6 @@ pub struct BotHandle {
     sender: mpsc::Sender<BotMessage>,
 }
 
-pub enum Get {
-    Words,
-    PeerId,
-    RoomCreator,
-    BotToken,
-    Word,
-    PlayerWord,
-    Syllable,
-}
-
 impl BotHandle {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel::<BotMessage>(512);
@@ -245,14 +226,6 @@ impl BotHandle {
     pub async fn get_room_creator(&self) -> String {
         let (send, recv) = oneshot::channel::<String>();
         let msg = BotMessage::GetRoomCreator { respond_to: send };
-
-        self.sender.send(msg).await.unwrap();
-        recv.await.expect("Bot has been killed")
-    }
-
-    pub async fn get_bot_token(&self) -> String {
-        let (send, recv) = oneshot::channel::<String>();
-        let msg = BotMessage::GetBotToken { respond_to: send };
 
         self.sender.send(msg).await.unwrap();
         recv.await.expect("Bot has been killed")

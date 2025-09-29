@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-// the defalut implementation is used by kaoruko_derive
+// the defalut implementation is used inside kaoruko_derive
 #[derive(Debug, Deserialize, Default)]
 pub struct Auth {
     pub id: String,
@@ -53,8 +53,8 @@ pub struct RoomDetails {
 }
 
 impl From<Vec<Value>> for RoomDetails {
-    fn from(value: Vec<Value>) -> Self {
-        serde_json::from_value::<Self>(value[0][0].clone())
+    fn from(values: Vec<Value>) -> Self {
+        serde_json::from_value::<Self>(values[0][0].clone())
             .expect("failed to deserialize room details")
     }
 }
