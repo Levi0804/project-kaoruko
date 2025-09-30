@@ -235,11 +235,11 @@ fn on_chat(
                     Command::Search => {
                         if query == "" {
                             let syllable = bot.get_syllable().await;
-                            let word = bot.get_word(syllable).await;
+                            let word = bot.get_words(syllable).await;
                             let _ = socket.emit("chat", word).await;
                             return Ok(());
                         }
-                        let word = bot.get_word(query.to_string()).await;
+                        let word = bot.get_words(query.to_string()).await;
                         let _ = socket.emit("chat", word).await;
                     }
                     Command::Exit => {

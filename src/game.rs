@@ -61,9 +61,9 @@ pub fn on_next_turn(
         let values = text_payload(payload);
         let player_peer_id = values[0].as_u64().unwrap();
         let _prompt_age = values[2].as_u64().unwrap();
+        let syllable = from_value::<String>(values[1].clone()).unwrap();
+        bot.set_syllable(syllable.clone()).await;
         if bot.get_peer_id().await == player_peer_id {
-            let syllable = from_value::<String>(values[1].clone()).unwrap();
-            bot.set_syllable(syllable.clone()).await;
             let word = bot.get_single_word(syllable).await;
             let _ = game_socket
                 .emit("setWord", vec![json!(word), json!(true)])

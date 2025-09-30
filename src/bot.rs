@@ -92,8 +92,7 @@ impl Bot {
     async fn handle_message(&mut self, msg: BotMessage) {
         match msg {
             BotMessage::GetWords { query, respond_to } => {
-                let Dictionary { dictionary, .. } = &self.dictionary;
-                let result = dictionary.borrow();
+                let result = self.dictionary.dictionary.get_mut();
                 let result = result
                     .iter()
                     .filter(|word| word.contains(&query))
@@ -107,6 +106,7 @@ impl Bot {
                 respond_to
                     .send(format!("results({}): {fifteen}", result.len()))
                     .unwrap();
+                shuffle(&mut self.dictionary.dictionary);
             }
             BotMessage::SetPeerId { peer_id } => {
                 self.self_peer_id.swap(peer_id, Ordering::Relaxed);
@@ -194,7 +194,7 @@ impl BotHandle {
         Self { sender }
     }
 
-    pub async fn get_word(&self, query: String) -> String {
+    pub async fn get_words(&self, query: String) -> String {
         let (send, recv) = oneshot::channel::<String>();
         let msg = BotMessage::GetWords {
             query,
