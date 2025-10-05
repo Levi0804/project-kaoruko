@@ -24,4 +24,6 @@ pub enum Command {
     StartNow,
     #[config(alias = "h", description = "get help for a command", roles = ["anyone"])]
     Help,
+    #[config(alias = "s", description = "display player stats", roles = ["anyone"])]
+    Stats,
 }

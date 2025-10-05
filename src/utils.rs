@@ -74,7 +74,7 @@ pub fn shuffle(words: &mut RefCell<Vec<String>>) {
 
     while current_index != 0 {
         let random_index = (rand::rng().random_range(0.0..1.0) * current_index as f64) as usize;
-        current_index = current_index - 1;
+        current_index -= 1;
 
         [words[current_index], words[random_index]] =
             [words[random_index].clone(), words[current_index].clone()];

@@ -115,3 +115,32 @@ pub struct Milestone {
     pub name: String,
     pub rules_locked: bool,
 }
+
+#[derive(Debug, Clone)]
+pub struct PlayerStats {
+    pub nickname: String,
+    pub roles: Vec<String>,
+    pub words: u64,
+    pub subs: u64,
+    pub longs: u64,
+    pub hyphens: u64,
+    pub multi: u64,
+    pub lives: u64,
+    pub streak: u64,
+}
+
+impl PlayerStats {
+    pub fn new(nickname: String, roles: Vec<String>) -> Self {
+        Self {
+            nickname,
+            roles,
+            words: u64::default(),
+            subs: u64::default(),
+            longs: u64::default(),
+            hyphens: u64::default(),
+            multi: u64::default(),
+            lives: u64::default(),
+            streak: u64::default(),
+        }
+    }
+}

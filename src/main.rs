@@ -45,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
         let bot = Arc::new(BotHandle::new());
         let bot2 = Arc::clone(&bot);
+        let bot3 = Arc::clone(&bot);
 
         // useful for halting the bot
         let notifier = Arc::new(Notify::new());
@@ -66,6 +67,8 @@ async fn main() -> anyhow::Result<()> {
             .connect()
             .await
             .expect("Connection failed");
+        // this clone is expensive
+        bot3.set_room_socket(socket.clone()).await;
         // keep the task alive, giving some time to the "connect" event
         notifier2.notified().await;
         // this line will be executed when user wants to exit
@@ -174,6 +177,8 @@ fn handle_game_socket(
         "failWord" => on_fail_word(payload, socket, bot_handle),
         "setMilestone" => on_set_milestone(payload, socket, bot_handle),
         "setup" => on_setup(payload, socket),
+        "addPlayer" => on_add_player(payload, socket, bot_handle),
+        "livesLost" => on_lives_lost(payload, socket, bot),
         _ => async {}.boxed(),
     }
 }
@@ -204,7 +209,7 @@ fn on_chatter_added(
     .boxed()
 }
 
-// this is very very bad, improve this.
+// TODO: the parser is broken
 fn on_chat(
     payload: Payload,
     socket: Client,
@@ -216,9 +221,8 @@ fn on_chat(
             let values = text_payload(payload);
             let chatter = serde_json::from_value::<Chatter>(values[0].clone())?;
             let message = serde_json::from_value::<String>(values[1].clone())?;
-            // TODO: also move this parsing inside the function
             let bot_peer_id = bot.get_peer_id().await;
-            // TODO: this parser is broken
+            // TODO: move this parsing inside the function
             let (cmd, query) = message.split_once(" ").unwrap_or((&message, ""));
             if !cmd.starts_with("!") && bot_peer_id == chatter.peer_id {
                 return Ok::<(), anyhow::Error>(());
@@ -233,7 +237,7 @@ fn on_chat(
             ) {
                 Ok(cmd) => match cmd {
                     Command::Search => {
-                        if query == "" {
+                        if query.is_empty() {
                             let syllable = bot.get_syllable().await;
                             let word = bot.get_words(syllable).await;
                             let _ = socket.emit("chat", word).await;
@@ -257,6 +261,26 @@ fn on_chat(
                     },
                     Command::StartNow => {
                         bot.start_round_now().await;
+                    }
+                    // do not allow usage of this command on event seating
+                    Command::Stats => {
+                        let peer_id = chatter.peer_id;
+                        let player = bot.get_player(peer_id).await;
+                        if let Some(p) = player {
+                            let PlayerStats {
+                                nickname,
+                                words,
+                                subs,
+                                longs,
+                                hyphens,
+                                multi,
+                                ..
+                            } = p;
+                            let message = format!("stats for {nickname} -> words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
+                            let  _ = socket.emit("chat", message).await;
+                        } else {
+                            let  _ = socket.emit("chat", format!("no stats found for {}", &chatter.nickname)).await;                                
+                        }
                     }
                 },
                 Err(err) => {

@@ -1,10 +1,11 @@
 use futures_util::FutureExt;
+use regex::Regex;
 use rust_socketio::{asynchronous::Client, Payload};
 use serde_json::{from_value, json};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::{bot::BotHandle, text_payload};
+use crate::{bot::BotHandle, text_payload, types::PlayerStats};
 
 pub fn on_set_milestone(
     payload: Payload,
@@ -81,14 +82,46 @@ pub fn on_setup(
     async move {}.boxed()
 }
 
+pub fn on_add_player(
+    payload: Payload,
+    _socket: Client,
+    bot: Arc<BotHandle>,
+) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
+    async move {
+        let payload = text_payload(payload);
+        // TODO: instead of this deserialize everthing.
+        let nickname =
+            serde_json::from_value::<String>(payload[0]["profile"]["nickname"].clone()).unwrap();
+        let peer_id = payload[0]["profile"]["peerId"].clone().as_u64().unwrap();
+        let roles =
+            serde_json::from_value::<Vec<String>>(payload[0]["profile"]["roles"].clone()).unwrap();
+
+        if peer_id != bot.get_peer_id().await {
+            bot.add_player(nickname, peer_id, roles).await;
+        }
+    }
+    .boxed()
+}
+
 pub fn on_correct_word(
-    _payload: Payload,
+    payload: Payload,
     _socket: Client,
     bot: Arc<BotHandle>,
 ) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
     async move {
         let correct_word = bot.get_player_word().await;
-        bot.add_used_word(correct_word).await
+        let re = Regex::new(r"[^a-z-' ]").unwrap();
+        let correct_word = re.replace_all(&correct_word, "").to_string();
+        bot.add_used_word(correct_word.clone()).await;
+        let payload = text_payload(payload);
+        let peer_id = payload[0]["playerPeerId"].clone().as_u64().unwrap();
+        if peer_id != bot.get_peer_id().await {
+            let player_stats = bot.get_player(peer_id).await;
+            if let Some(p) = player_stats {
+                bot.is_condierable_word(p.nickname.clone(), peer_id, correct_word)
+                    .await;
+            }
+        }
     }
     .boxed()
 }
@@ -112,6 +145,34 @@ pub fn on_fail_word(
             let _ = game_socket
                 .emit("setWord", vec![json!(word), json!(true)])
                 .await;
+        }
+    }
+    .boxed()
+}
+
+pub fn on_lives_lost(
+    payload: Payload,
+    _: Client,
+    bot: Arc<BotHandle>,
+) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
+    async move {
+        let payload = text_payload(payload);
+        let lives = payload[1].as_u64().unwrap();
+        if lives == 0 {
+            let peer_id = payload[0].as_u64().unwrap();
+            if let Some(p) = bot.get_player(peer_id).await {
+                let PlayerStats {
+                    nickname,
+                    words,
+                    subs,
+                    longs,
+                    hyphens,
+                    multi,
+                    ..
+                } = p;
+                let message = format!("Well played {nickname}! words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
+                bot.set_chat(message).await;
+            } 
         }
     }
     .boxed()

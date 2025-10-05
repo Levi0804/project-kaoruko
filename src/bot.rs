@@ -1,7 +1,9 @@
 use rust_socketio::asynchronous::Client;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::types::PlayerStats;
 use crate::utils::shuffle;
 use crate::Dictionary;
 
@@ -22,6 +24,10 @@ struct Bot {
     syllable: String,
     // bombparty game socket
     game_socket: Option<Client>,
+    // all the players in game
+    players: HashMap<u64, PlayerStats>,
+    // room socket
+    room_socket: Option<Client>,
 }
 
 enum BotMessage {
@@ -71,6 +77,26 @@ enum BotMessage {
         socket: Client,
     },
     StartRoundNow,
+    IsConsiderableWord {
+        nickname: String,
+        peer_id: u64,
+        word: String,
+    },
+    AddPlayer {
+        nickname: String,
+        peer_id: u64,
+        roles: Vec<String>,
+    },
+    GetPlayer {
+        peer_id: u64,
+        respond_to: oneshot::Sender<Option<PlayerStats>>,
+    },
+    SetRoomSocket {
+        socket: Client,
+    },
+    SetChat {
+        message: String,
+    },
 }
 
 impl Bot {
@@ -87,6 +113,8 @@ impl Bot {
             player_word: String::default(),
             syllable: String::default(),
             game_socket: None,
+            players: HashMap::default(),
+            room_socket: None,
         }
     }
     async fn handle_message(&mut self, msg: BotMessage) {
@@ -168,6 +196,85 @@ impl Bot {
                     .emit("startRoundNow", "")
                     .await
                     .unwrap();
+            }
+            BotMessage::IsConsiderableWord {
+                nickname,
+                peer_id,
+                word,
+            } => {
+                let player = self.players.get_mut(&peer_id).unwrap();
+                let client = self.room_socket.as_ref().unwrap();
+                let mut perk = format!("{nickname} has placed");
+                let mut considerable = false;
+                if word.len() >= 20 {
+                    player.longs += 1;
+                    considerable = true;
+                    perk.push_str(format!(" a long ({}) —", player.longs).as_str());
+                }
+                if word.contains("-") {
+                    player.hyphens += 1;
+                    considerable = true;
+                    perk.push_str(format!(" a hyphen ({}) —", player.hyphens).as_str());
+                }
+                if self.dictionary.sn.contains(&word) {
+                    player.subs += 1;
+                    considerable = true;
+                    perk.push_str(format!(" a sn ({}) —", player.subs).as_str());
+                }
+                if word.contains(" ") {
+                    let word = word.split(" ").collect::<Vec<_>>();
+                    let words = self.dictionary.dictionary.get_mut();
+                    let mut contains = true;
+                    for w in word {
+                        if !words.contains(&w.to_string()) {
+                            contains = false;
+                            break;
+                        }
+                    }
+                    if contains {
+                        player.multi += 1;
+                        considerable = true;
+                        perk.push_str(format!(" a multi ({}) —", player.multi).as_str());
+                    }
+                }
+                player.words += 1;
+                if perk.ends_with("—") {
+                    perk = perk.replace(" —", "");
+                }
+                perk.push_str(format!(": {word}").as_str());
+                if considerable {
+                    client.emit("chat", perk).await.unwrap();
+                }
+            }
+            BotMessage::AddPlayer {
+                nickname,
+                peer_id,
+                roles,
+            } => {
+                self.players
+                    .insert(peer_id, PlayerStats::new(nickname, roles));
+            }
+            BotMessage::GetPlayer {
+                peer_id,
+                respond_to,
+            } => {
+                // TODO: why unwrap this? just return an option and let's handle it on the front side
+                let player = match self.players.get(&peer_id) {
+                    Some(p) => Some(p.clone()),
+                    None => None,
+                };
+                respond_to.send(player).unwrap();
+            }
+            BotMessage::SetRoomSocket { socket } => {
+                self.room_socket = Some(socket);
+            }
+            BotMessage::SetChat { message } => {
+                let _ = self
+                    .room_socket
+                    .as_ref()
+                    .unwrap()
+                    .emit("chat", message)
+                    .await;
             }
         }
     }
@@ -292,6 +399,44 @@ impl BotHandle {
 
     pub async fn start_round_now(&self) {
         let msg = BotMessage::StartRoundNow;
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn is_condierable_word(&self, nickname: String, peer_id: u64, word: String) {
+        let msg = BotMessage::IsConsiderableWord {
+            nickname,
+            peer_id,
+            word,
+        };
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn add_player(&self, nickname: String, peer_id: u64, roles: Vec<String>) {
+        let msg = BotMessage::AddPlayer {
+            nickname,
+            peer_id,
+            roles,
+        };
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn get_player(&self, peer_id: u64) -> Option<PlayerStats> {
+        let (send, recv) = oneshot::channel::<Option<PlayerStats>>();
+        let msg = BotMessage::GetPlayer {
+            peer_id,
+            respond_to: send,
+        };
+        self.sender.send(msg).await.unwrap();
+        recv.await.expect("Bot has been killed")
+    }
+
+    pub async fn set_room_socket(&self, socket: Client) {
+        let msg = BotMessage::SetRoomSocket { socket };
+        self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn set_chat(&self, message: String) {
+        let msg = BotMessage::SetChat { message };
         self.sender.send(msg).await.unwrap();
     }
 }
