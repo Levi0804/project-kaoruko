@@ -1,3 +1,4 @@
+use regex::Regex;
 use rust_socketio::asynchronous::Client;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -97,6 +98,10 @@ enum BotMessage {
     SetChat {
         message: String,
     },
+    UpdateLives {
+        peer_id: u64,
+        respond_to: oneshot::Sender<u64>,
+    },
 }
 
 impl Bot {
@@ -120,21 +125,28 @@ impl Bot {
     async fn handle_message(&mut self, msg: BotMessage) {
         match msg {
             BotMessage::GetWords { query, respond_to } => {
-                let result = self.dictionary.dictionary.get_mut();
-                let result = result
-                    .iter()
-                    .filter(|word| word.contains(&query))
-                    .collect::<Vec<_>>();
-                let fifteen = if result.len() > 15 { 15 } else { result.len() };
-                let fifteen = result[0..fifteen]
-                    .iter()
-                    .map(|&word| word.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                respond_to
-                    .send(format!("results({}): {fifteen}", result.len()))
-                    .unwrap();
-                shuffle(&mut self.dictionary.dictionary);
+                let words = self.dictionary.dictionary.get_mut();
+                if let Ok(re) = Regex::new(&query) {
+                    let result = words.iter().filter(|w| re.is_match(w)).collect::<Vec<_>>();
+                    let fifteen = if result.len() > 15 { 15 } else { result.len() };
+                    let fifteen = result[0..fifteen]
+                        .iter()
+                        .map(|&word| word.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if fifteen.is_empty() {
+                        respond_to
+                            .send(format!("No result found for: {query}"))
+                            .unwrap();
+                    } else {
+                        respond_to
+                            .send(format!("results({}): {fifteen}", result.len()))
+                            .unwrap();
+                        shuffle(&mut self.dictionary.dictionary);
+                    }
+                } else {
+                    respond_to.send(format!("too expensive regex")).unwrap();
+                }
             }
             BotMessage::SetPeerId { peer_id } => {
                 self.self_peer_id.swap(peer_id, Ordering::Relaxed);
@@ -258,11 +270,7 @@ impl Bot {
                 peer_id,
                 respond_to,
             } => {
-                // TODO: why unwrap this? just return an option and let's handle it on the front side
-                let player = match self.players.get(&peer_id) {
-                    Some(p) => Some(p.clone()),
-                    None => None,
-                };
+                let player = self.players.get(&peer_id).map(|p| p.clone());
                 respond_to.send(player).unwrap();
             }
             BotMessage::SetRoomSocket { socket } => {
@@ -275,6 +283,14 @@ impl Bot {
                     .unwrap()
                     .emit("chat", message)
                     .await;
+            }
+            BotMessage::UpdateLives {
+                peer_id,
+                respond_to,
+            } => {
+                let player = self.players.get_mut(&peer_id).unwrap();
+                player.lives += 1;
+                respond_to.send(player.lives).unwrap();
             }
         }
     }
@@ -438,5 +454,15 @@ impl BotHandle {
     pub async fn set_chat(&self, message: String) {
         let msg = BotMessage::SetChat { message };
         self.sender.send(msg).await.unwrap();
+    }
+
+    pub async fn increment_lives(&self, peer_id: u64) -> u64 {
+        let (send, recv) = oneshot::channel::<u64>();
+        let msg = BotMessage::UpdateLives {
+            peer_id,
+            respond_to: send,
+        };
+        self.sender.send(msg).await.unwrap();
+        recv.await.expect("Bot has been killed")
     }
 }

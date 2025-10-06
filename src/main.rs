@@ -176,9 +176,9 @@ fn handle_game_socket(
         "correctWord" => on_correct_word(payload, socket, bot_handle),
         "failWord" => on_fail_word(payload, socket, bot_handle),
         "setMilestone" => on_set_milestone(payload, socket, bot_handle),
-        "setup" => on_setup(payload, socket),
         "addPlayer" => on_add_player(payload, socket, bot_handle),
         "livesLost" => on_lives_lost(payload, socket, bot),
+        "bonusAlphabetCompleted" => on_bonus_alphabet_completed(payload, socket, bot),
         _ => async {}.boxed(),
     }
 }
@@ -274,9 +274,10 @@ fn on_chat(
                                 longs,
                                 hyphens,
                                 multi,
+                                lives,
                                 ..
                             } = p;
-                            let message = format!("stats for {nickname} -> words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
+                            let message = format!("Stats for {nickname} -> lives: {lives} — words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
                             let  _ = socket.emit("chat", message).await;
                         } else {
                             let  _ = socket.emit("chat", format!("no stats found for {}", &chatter.nickname)).await;                                

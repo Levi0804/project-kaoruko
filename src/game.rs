@@ -16,10 +16,6 @@ pub fn on_set_milestone(
         let payload = text_payload(payload);
         let name = serde_json::from_value::<String>(payload[0]["name"].clone()).unwrap();
         if &name == "seating" {
-            // TODO: only thing that needs to be changed is the dictionary not everything
-            // so only change that don't take the entire bot as new.
-            // let bot = Arc::new(BotHandle::new());
-            // ROOMS.lock().await.insert(room_code.clone(), bot);
             let _ = game_socket.emit("joinRound", "").await;
         }
         if let Ok(current_player_peer_id) =
@@ -74,14 +70,6 @@ pub fn on_next_turn(
     .boxed()
 }
 
-// Do we really need this?
-pub fn on_setup(
-    _payload: Payload,
-    _game_socket: Client,
-) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
-    async move {}.boxed()
-}
-
 pub fn on_add_player(
     payload: Payload,
     _socket: Client,
@@ -89,7 +77,7 @@ pub fn on_add_player(
 ) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
     async move {
         let payload = text_payload(payload);
-        // TODO: instead of this deserialize everthing.
+        // TODO: instead of this, deserialize everthing.
         let nickname =
             serde_json::from_value::<String>(payload[0]["profile"]["nickname"].clone()).unwrap();
         let peer_id = payload[0]["profile"]["peerId"].clone().as_u64().unwrap();
@@ -115,6 +103,7 @@ pub fn on_correct_word(
         bot.add_used_word(correct_word.clone()).await;
         let payload = text_payload(payload);
         let peer_id = payload[0]["playerPeerId"].clone().as_u64().unwrap();
+        // tokio::task::spawn(async move {
         if peer_id != bot.get_peer_id().await {
             let player_stats = bot.get_player(peer_id).await;
             if let Some(p) = player_stats {
@@ -122,6 +111,7 @@ pub fn on_correct_word(
                     .await;
             }
         }
+        // });
     }
     .boxed()
 }
@@ -168,11 +158,30 @@ pub fn on_lives_lost(
                     longs,
                     hyphens,
                     multi,
+                    lives,
                     ..
                 } = p;
-                let message = format!("Well played {nickname}! words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
+                let message = format!("Well played {nickname}! lives: {lives} — words: {words} — subs: {subs} — longs: {longs} — hyphens: {hyphens} — multi: {multi}");
                 bot.set_chat(message).await;
             } 
+        }
+    }
+    .boxed()
+}
+
+pub fn on_bonus_alphabet_completed(
+    payload: Payload,
+    _: Client,
+    bot: Arc<BotHandle>,
+) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
+    async move {
+        let payload = text_payload(payload);
+        let peer_id = payload[0].as_u64().unwrap();
+        let _lives = payload[1].as_u64();
+        if let Some(p) = bot.get_player(peer_id).await {
+            let nickname = p.nickname;
+            let count = bot.increment_lives(peer_id).await;
+            bot.set_chat(format!("{nickname} has gained a life ({count})")).await;
         }
     }
     .boxed()
