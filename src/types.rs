@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::cell::RefCell;
@@ -142,5 +143,45 @@ impl PlayerStats {
             lives: u64::default(),
             streak: u64::default(),
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataOnNextTurn {
+    pub player_peer_id: u64,
+    pub syllable: String,
+    #[allow(unused)]
+    pub prompt_age: u64,
+}
+
+impl TryFrom<Vec<Value>> for DataOnNextTurn {
+    type Error = anyhow::Error;
+    fn try_from(values: Vec<Value>) -> Result<Self, Self::Error> {
+        let player_peer_id = values[0]
+            .as_u64()
+            .ok_or(anyhow!("no player peer id found "))?;
+        let syllable = serde_json::from_value::<String>(values[1].clone())?;
+        let prompt_age = values[2].as_u64().ok_or(anyhow!("no prompt age found"))?;
+        Ok(Self {
+            player_peer_id,
+            syllable,
+            prompt_age,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Player {
+    pub nickname: String,
+    pub peer_id: u64,
+    pub roles: Vec<String>,
+}
+
+impl TryFrom<Vec<Value>> for Player {
+    type Error = anyhow::Error;
+    fn try_from(value: Vec<Value>) -> Result<Self, Self::Error> {
+        Ok(serde_json::from_value::<Self>(value[0]["profile"].clone())?)
     }
 }

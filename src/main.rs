@@ -132,7 +132,12 @@ fn on_connect_inner(
                 })
                 .on_any(move |event, payload, socket| {
                     let bot2 = Arc::clone(&bot);
-                    handle_game_socket(event, payload, socket, bot2)
+                    async move {
+                        handle_game_socket(event, payload, socket, bot2)
+                            .await
+                            .expect("error handling game socket")
+                    }
+                    .boxed()
                 })
                 .connect()
                 .await
@@ -168,7 +173,7 @@ fn handle_game_socket(
     payload: Payload,
     socket: Client,
     bot: Arc<BotHandle>,
-) -> Pin<Box<dyn futures_util::Future<Output = ()> + Send + 'static>> {
+) -> Pin<Box<dyn futures_util::Future<Output = anyhow::Result<()>> + Send + 'static>> {
     let bot_handle = Arc::clone(&bot);
     match String::from(event).as_str() {
         "nextTurn" => on_next_turn(payload, socket, bot_handle),
@@ -179,7 +184,7 @@ fn handle_game_socket(
         "addPlayer" => on_add_player(payload, socket, bot_handle),
         "livesLost" => on_lives_lost(payload, socket, bot),
         "bonusAlphabetCompleted" => on_bonus_alphabet_completed(payload, socket, bot),
-        _ => async {}.boxed(),
+        _ => async { Ok(()) }.boxed(),
     }
 }
 

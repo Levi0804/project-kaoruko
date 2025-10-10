@@ -13,8 +13,6 @@ pub fn create_user_token() -> anyhow::Result<String> {
     Ok(String::from_utf8(token)?.to_lowercase())
 }
 
-// TODO: we don't want to propogate the error
-// in this case we just want to log and continue
 pub async fn start_new_room(
     room_name: Option<&str>,
     is_public: bool,
@@ -32,11 +30,10 @@ pub async fn start_new_room(
         .send()
         .await?;
     let url = serde_json::from_str::<serde_json::Value>(&response.text().await?)?;
-    if let Value::String(code) = &url["roomCode"] {
-        Ok((join_room(code).await?, code.clone()))
-    } else {
-        unreachable!("enterd unreachable!?")
-    }
+    let Value::String(code) = url["roomCode"].clone() else {
+        return Err(anyhow!("Unable to get room code"));
+    };
+    Ok((join_room(code.as_str()).await?, code))
 }
 
 pub async fn join_room(room_code: &str) -> anyhow::Result<String> {
@@ -46,18 +43,16 @@ pub async fn join_room(room_code: &str) -> anyhow::Result<String> {
         .json(&json!( { "roomCode": room_code } ))
         .send()
         .await
-        .expect("request failed");
-    let response = response
+        .map_err(|err| anyhow!("request failed: {err}"))?
         .text()
         .await
         .map_err(|err| anyhow!("no response from jklm: {err}"))?;
     let url = serde_json::from_str::<Value>(&response)
         .map_err(|err| anyhow!("failed to deserialize value: {err}"))?;
-    if let Value::String(url) = &url["url"] {
-        Ok(url.clone())
-    } else {
-        unreachable!("enterd unreachable!?")
-    }
+    let Value::String(url) = url["url"].clone() else {
+        return Err(anyhow!("Unable to join with the provided room code"));
+    };
+    Ok(url)
 }
 
 pub fn text_payload(payload: Payload) -> Vec<Value> {

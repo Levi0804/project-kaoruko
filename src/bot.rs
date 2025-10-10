@@ -105,6 +105,7 @@ enum BotMessage {
 }
 
 impl Bot {
+    // prpogate everything up from here and ignore at a single place.
     fn new(receiver: mpsc::Receiver<BotMessage>) -> Self {
         let dictionary = std::fs::read_to_string("src/dictionaries/english.json").unwrap();
         let mut dictionary = serde_json::from_str::<Dictionary>(&dictionary).unwrap();
